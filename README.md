@@ -25,6 +25,7 @@ Bases de données et SQL : MySQL, Access, SQL
 Conception et mise en œuvre d’enquêtes : Kobotoolbox, CSPRO, SurveyCTO
 
 Langues : Français (courant), Anglais (courant), Mooré (natif), Arabe (débutant)
+Vérification de mes compétences: https://www.credly.com/users/sankara-saidou/skills
 
 🏆 Certifications professionnelles
 
@@ -44,7 +45,7 @@ Gestion des risques de sécurité (INSSA, national & régional)
 
 Collecte de données pour l’inclusion des personnes handicapées (READY)
 
-Vérification des certifications : Credly – Sankara Saïdou
+Vérification des certifications : https://www.credly.com/users/sankara-saidou/skills
 
 🛠️ Expérience
 
