@@ -1,0 +1,353 @@
+---
+title: "Modélisation Multinomiale pour la Prédiction du Type de Logement Prioritaire pour les Ménages"
+author: " TONGO Lanyiwè Lazare, SANKARA Saïdou et NIKIEMA Tahirou "
+date: "2024-08-14"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Sélection des Variables Explicatives :
+
+ Voici les raisons pour lesquelles chaque variable a été sélectionnée :
+
+Nombre de pièces (nb_piece) : Le nombre de pièces dans un logement est un indicateur direct de la taille et de la commodité du logement, influençant le type de logement choisi par les ménages. Un logement plus spacieux est souvent associé à un type de logement plus moderne ou intermédiaire.
+
+Statut d'occupation (statut_occupation) : Le statut d'occupation (propriétaire, copropriétaire, locataire) est un facteur clé dans la détermination du type de logement. Les propriétaires ont tendance à vivre dans des logements plus modernes ou mieux entretenus, tandis que les locataires peuvent se trouver dans des logements moins modernes.
+
+Localisation du logement (local_logement) : La localisation géographique est cruciale car elle affecte l'accès aux services, aux infrastructures et à la qualité générale de vie. Les logements situés dans des zones urbaines ou bien desservies sont souvent de meilleure qualité, influençant ainsi le type de logement.
+
+Matériaux des murs (materieaux_mure) : Les matériaux de construction des murs sont un indicateur important de la qualité et de la modernité du logement. Les matériaux modernes suggèrent un logement de meilleure qualité, tandis que des matériaux moins durables ou traditionnels peuvent indiquer un logement non moderne.
+
+Présence du réseau d'eau (reseau_eau) : L'accès à l'eau courante est un indicateur de modernité et de qualité du logement. Un logement connecté au réseau d'eau est souvent mieux équipé et de meilleure qualité, ce qui en fait un facteur pertinent pour distinguer les types de logement.
+
+Présence du réseau électrique (reseau_electrique) : Comme pour l'eau, l'accès à l'électricité est essentiel pour la vie moderne. Les logements disposant d'une connexion stable à l'électricité sont souvent plus modernes, ce qui justifie l'inclusion de cette variable.
+
+Coupures d'électricité (coupure_electrique) : La fréquence des coupures d'électricité peut refléter la fiabilité des infrastructures locales et donc la qualité du logement. Un logement avec des coupures fréquentes est susceptible d'être moins moderne.
+
+Type de toilette (type_toilette) : Le type de toilette est un autre indicateur important de la qualité du logement. Un logement équipé de toilettes modernes est probablement plus moderne dans son ensemble, tandis que des toilettes non équipées peuvent suggérer un logement moins moderne.
+
+Ces variables ont été choisies car elles capturent les principaux aspects qui différencient les types de logements en termes de confort, de qualité, et de modernité, et sont donc essentielles pour un modèle qui vise à prédire le type de logement des ménages.
+ 
+# Traitement des données
+## Charger le package
+```{r}
+library(haven)
+library(dplyr)
+library(nnet)
+library(car)
+library(lmtest)
+library(caret)
+library(pscl)
+library(aod)
+library(mlogit)
+```
+
+## Importer le fichier  : la base
+```{r}
+base_select<- read_sav("s11_me_CIV2018.dta")
+```
+## Recodage et labelisation
+```{r}
+#typer de logmement
+# Regroupement de la variable type de logements
+base_select <- base_select %>%
+  mutate(type_logement = case_when(
+    s11q01 %in% c("1", "2", "3", "4") ~ "logement moderne",
+    s11q01 %in% c("5", "6") ~ "logement intermediaire",
+    s11q01 %in% c("7", "8", "9") ~ "logement Non moderne"
+  ))
+
+## statut d'occupation
+base_select <- base_select %>%
+  mutate(statut_occupation = case_when(
+    s11q04 %in% c("1", "2") ~ "propriétaire",
+    s11q04 %in% c("3", "4") ~ "copropriétaire",
+    s11q04 %in% c("5", "6", "7") ~ "locataire",
+    s11q04 %in% c("8") ~ "Autre"
+  ))
+
+## locale d'entreprise dans appartement
+
+base_select <- base_select %>%
+  mutate(local_logement = case_when(
+    s11q18 %in% c("1") ~ "Oui",
+    s11q18 %in% c("2") ~ "Non",
+  ))
+
+## Principal matériau de construction
+
+base_select <- base_select %>%
+  mutate(materieaux_mure = case_when(
+    s11q19 %in% c("1", "3") ~ "Materieaux moderne",
+    s11q19 %in% c("2", "4") ~ "Materiaaux standare",
+    s11q19 %in% c("5", "6", "7","8") ~ "Materieaux non moderne"
+  ))
+
+## connection a un reseau d'eau courante
+base_select <- base_select %>%
+  mutate(reseau_eau = case_when(
+    s11q22 %in% c("1") ~ "Oui",
+    s11q22 %in% c("2") ~ "Non",
+  ))
+
+## connection a un reseau électrique
+base_select <- base_select %>%
+  mutate(reseau_electrique = case_when(
+    s11q34 %in% c("1","2","3") ~ "Oui",
+    s11q34 %in% c("4") ~ "Non",
+  ))
+
+## coupure de courant pendant les 7 deniers jour 
+base_select <- base_select %>%
+  mutate(coupure_electrique = case_when(
+    s11q39 %in% c("1") ~ "Oui",
+    s11q39 %in% c("2") ~ "Non",
+  ))  
+
+## type de toilette
+base_select <- base_select %>%
+  mutate(type_toilette = case_when(
+    s11q55 %in% c("1", "2","3", "4") ~ "WC",
+    s11q55 %in% c("5", "6","7", "8") ~ "Latrine",
+    s11q55 %in% c("9", "10", "11","12") ~ "non equipé"
+  ))
+
+## nombre de piece
+base_select$nb_piece=base_select$s11q02
+
+## loyé mensuel
+base_select$loyer_mensuel=base_select$s11q05
+```
+
+## Creation de l'indentifian unique des ménages
+```{r}
+base_select$hhid= (base_select$grappe*100 + base_select$menage)
+```
+
+## Analyse preliminaire
+Le jeu de données comprend un total de 12 992 enregistrements, chacun représentant un ménage avec diverses caractéristiques. Nous allons maintenant présenter brièvement les variables qui seront utilisées dans notre modélisation.
+```{r}
+table(base_select$type_logement)
+round(prop.table(table(base_select$type_logement)),2)
+```
+
+Près de la moitié des logements (48%) sont de type intermédiaire, indiquant qu'ils constituent la majorité. Les logements modernes sont également significatifs, représentant 35% des cas. Les logements non modernes sont les moins fréquents, représentant seulement 17%.
+```{r}
+table(base_select$statut_occupation)
+round(prop.table(table(base_select$statut_occupation)),2)
+```
+La majorité des ménages sont soit propriétaires (49%) soit locataires (48%), montrant une distribution presque égale entre ces deux statuts. Les statuts de copropriétaire et autre sont marginaux, représentant respectivement 2% et 1% des ménages.
+```{r}
+table(base_select$local_logement)
+round(prop.table(table(base_select$local_logement)),2)
+```
+Une large majorité des logements (92%) sont situés en zone rurale, laissant seulement 8% en zone urbaine. Cela peut indiquer que la plupart des ménages vivent dans des conditions où l'accès aux services publics et aux infrastructures modernes est limité.
+```{r}
+table(base_select$materieaux_mure)
+round(prop.table(table(base_select$materieaux_mure)),2)
+```
+Les matériaux modernes sont les plus utilisés (46%), reflétant une tendance à privilégier des constructions plus récentes ou de meilleure qualité. Cependant, 37% des logements utilisent encore des matériaux standard, et 17% utilisent des matériaux non modernes, ce qui pourrait correspondre à des logements plus anciens ou de moindre qualité.
+```{r}
+table(base_select$reseau_eau)
+round(prop.table(table(base_select$reseau_eau)),2)
+```
+Seul un quart des logements (25%) ont accès à un réseau d'eau potable, ce qui souligne un accès restreint à cette ressource essentielle pour la majorité des ménages (75%).
+```{r}
+table(base_select$reseau_electrique)
+round(prop.table(table(base_select$reseau_electrique)),2)
+```
+Une légère majorité des logements (56%) ont accès à l'électricité, tandis que 44% n'en bénéficient pas. Cet accès limité à l'électricité peut avoir un impact significatif sur la qualité de vie des ménages concernés.
+```{r}
+table(base_select$coupure_electrique)
+round(prop.table(table(base_select$coupure_electrique)),2)
+```
+Les coupures d'électricité touchent un peu plus de la moitié des ménages (51%), ce qui indique une instabilité du service pour une partie importante de la population.
+```{r}
+table(base_select$type_toilette)
+round(prop.table(table(base_select$type_toilette)),2)
+```
+Une majorité des logements n'ont pas de toilettes modernes (WC). Seulement 18% en sont équipés, tandis que 37% utilisent des latrines et 45% ne disposent pas de toilettes équipées. Cela montre un accès limité aux installations sanitaires modernes.
+
+# Implementation du modèle logit multinomiale
+
+Nous allons maintenant passer à l'implémentation de notre modèle. D'après la littérature, le modèle logit multinomial est le plus adapté à nos données. C'est pourquoi nous avons choisi de l'utiliser. Le logiciel R offre plusieurs packages pour implémenter ce modèle, le plus couramment utilisé étant mlogit, qui est bien adapté aux modélisations complexes sur de grandes bases de données.
+
+Cependant, pour utiliser la fonction principale de ce package (mlogit) et implémenter notre modèle logit multinomial, les données doivent être au format long. Nous allons donc commencer par restructurer nos données en ce format, en utilisant l'identifiant unique des ménages que nous avons créé précédemment lors du traitement des données.
+
+## Transformation des données au forma long
+```{r}
+cols_to_factor <- c("type_logement", "statut_occupation", "local_logement", "materieaux_mure", "reseau_eau", "reseau_electrique", "coupure_electrique","type_toilette")
+for (col in cols_to_factor) {
+  base_select[[col]] <- factor(base_select[[col]])
+}
+mlogit_data <- mlogit.data(base_select, 
+                           choice = "type_logement", 
+                           shape = "wide", 
+                           varying = NULL, 
+                          id.var = "hhid")
+
+```
+## Estimation du modèle multinomiale en utilisant la fonction "mlogit"
+
+Apres avoir restructurer nos données en format long, nous pouvons maintenant les introduires dans la fonction mlogit et implementer notre modèle
+```{r}
+model_mlogit <- mlogit(type_logement ~ 0 | nb_piece + statut_occupation + local_logement + materieaux_mure + reseau_eau + reseau_electrique + coupure_electrique + type_toilette, 
+                       data = mlogit_data)
+summary(model_mlogit)
+```
+## verificationn des tests du modèle
+
+Après l'implémentation de notre modèle, nous allons effectuer certains tests pour évaluer si les coefficients estimés sont acceptables et pour vérifier la qualité de la régression.
+
+### Test du ratio de vraisemblance
+```{r}
+lrtest(model_mlogit)
+```
+Le test du rapport de vraisemblance compare deux versions du même modèle de régression logistique multinomiale, avec des spécifications identiques pour les variables explicatives et le même log-vraisemblance de -5482.4. Le test de chi carré (0) et la valeur p de 1 indiquent qu'il n'y a pas de différence statistiquement significative entre les deux modèles. En d'autres termes, les modifications apportées n'ont pas amélioré l'ajustement du modèle. Cela suggère que le modèle n'est stable et que les ajustements effectués n'ont pas eu d'impact sur la qualité de l'ajustement.
+
+### Matrice de confusion
+```{r}
+predictions_mlogit <- predict(model_mlogit, newdata = mlogit_data, type = "class")
+length(predictions_mlogit)
+length(mlogit_data$type_logement)
+
+```
+En essayant de faire la matrice de confusion on voit que le modèle ne fait pas de prevision pour tous les menages ce qui rend impossible la construction de la matrice de confusion.
+
+les tests effectuer nous montres qu'il ya un probleme serieux avec nos données cela est du à une mauvaise implementation du modèle causer soit par un mauvais choix des variables explicatives soit au faite la fonction utiliser ne s'adapter pas correctement à nos données. Pour palier à ce problement nous allons essayer de regresser notre modèle avec un autre fonction d'un autre package. il d'agit de la fonction mutinom du package nnet aui est une fonction permettnt egalement de regresser un modèle logit multinomiale.
+
+## Estimation du modèlé multinomiale en utilisant la fonction "multinom"
+```{r}
+model_multinomial_essaie <- multinom(type_logement ~  statut_occupation + local_logement + materieaux_mure + reseau_eau + reseau_electrique + coupure_electrique + type_toilette, data = base_select)
+summary (model_multinomial_essaie)
+```
+
+```{r}
+# Obtenir les z-scores
+model_summary_essaie <- summary (model_multinomial_essaie)
+z_scores_essaie <- model_summary_essaie$coefficients / model_summary_essaie$standard.errors
+
+# Calculer les p-values
+p_values_essaie <- 2 * (1 - pnorm(abs(z_scores_essaie)))
+p_values_essaie
+```
+
+
+```{r}
+vif(model_multinomial_essaie)
+```
+À l'exception des variables statut_occupation et reseau_electrique, qui présentent une collinéarité très élevée et pourraient compromettre la fiabilité des estimations des coefficients, toutes les autres variables montrent une collinéarité modérée à faible, permettant une interprétation plus stable de leurs effets dans le modèle. La collinéarité élevée de certaines variables est due à une forte corrélation avec d'autres variables. Pour résoudre ce problème, nous allons retirer ces variables et refaire l'estimation du modèle 
+```{r}
+model_multinomial <- multinom(type_logement ~  nb_piece + local_logement + materieaux_mure + reseau_eau + reseau_electrique + type_toilette, data = base_select)
+summary (model_multinomial)
+```
+
+## validation du modèle
+### significativité des coeficients 
+```{r}
+# Obtenir les z-scores
+model_summary <- summary (model_multinomial)
+z_scores <- model_summary$coefficients / model_summary$standard.errors
+
+# Calculer les p-values
+p_values <- 2 * (1 - pnorm(abs(z_scores)))
+p_values
+```
+Les résultats de la régression multinomiale montrent que certaines variables explicatives ont une influence significative sur la classification des logements en "moderne" ou "non moderne".
+
+Logement moderne : Les variables telles que le nombre de pièces, la présence d'un réseau d'eau, l'utilisation de matériaux non modernes pour les murs, la présence de toilettes non équipées et l'utilisation de toilettes de type WC sont des facteurs déterminants pour qu'un logement soit classé comme moderne. Cela indique que ces éléments jouent un rôle crucial dans la perception ou la caractérisation d'un logement comme étant moderne.
+
+Logement non moderne : Pour cette catégorie, l'utilisation de matériaux modernes pour les murs est un facteur fortement significatif, suggérant que leur présence réduit la probabilité qu'un logement soit considéré comme non moderne. De plus, l'accès à un réseau d'eau et la présence de toilettes non équipées sont également des facteurs significatifs, influençant négativement la classification en "non moderne".
+
+### muticolinearité
+```{r}
+vif(model_multinomial)
+```
+Les résultats du VIF montrent des valeurs extrêmement élevées Ces valeurs suggèrent un problème sérieux de colinéarité parfaite ou presque parfaite entre les variables explicatives utilisées dans le modèle.
+### Test de wald
+```{r}
+wald_test <- summary(model_multinomial)$coefficients
+print("Wald Test Results:")
+print(wald_test)
+
+```
+
+Les coefficients du test de Wald montrent l'effet individuel de chaque variable sur la probabilité qu'un logement soit moderne ou non moderne. Certaines variables, comme les matériaux des murs, le réseau d'eau, et le type de toilette, ont des effets notables, tandis que d'autres, comme l'accès à l'électricité, ont des effets moins significatifs. 
+### Anova 
+```{r}
+Anova(model_multinomial, test="LR")
+```
+
+Les différntes statistiques de Chi-carré (LR Chisq) ainsi que les différentes valeurs p associées montrent que les variables nb_piece, materieaux_mure, reseau_eau, reseau_electrique, et type_toilette sont toutes des prédicteurs significatifs du type de logement, tandis que local_logement ne montre pas d'effet significatif. Ces résultats soulignent l'importance de certaines caractéristiques du logement dans la détermination de son type.
+
+```{r}
+lrtest(model_multinomial)
+```
+
+La statistique de Chi-carré de 4267.9 avec une valeur p inférieure à 2.2e-16 indique que le modèle 1, qui inclut les variables explicatives, s'ajuste de manière significativement meilleure que le modèle 2, qui ne contient que l'intercept.
+Par consequent, le test du rapport de vraisemblance montre que l'ajout de variables explicatives améliore considérablement l'ajustement du modèle, ce qui renforce l'idée que ces caractéristiques sont importantes pour classifier le type de logement
+
+### Calcul du Pseudo R² de Cragg et Uhler (Nagelkerke R²)
+```{r}
+pseudo_r2 <- pR2(model_multinomial)
+pseudo_r2
+```
+
+les résultats montrent que le modèle multinomial a une capacité d'explication raisonnable des données, avec une amélioration significative par rapport à un modèle sans variables explicatives. Les valeurs de R², bien que modestes, indiquent que les variables incluses dans le modèle ont un effet sur le choix du type de logement
+
+### muticolinearité
+```{r}
+vif(model_multinomial)
+```
+
+Les résultats des VIFs montrent que deux variables, "nb_piece" et "reseau_electrique", présentent des indices de multicolinéarité relativement relativement proche de 5, mais restent en dessous du seuil critique de 10, ce qui suggère qu'il n'y a pas de multicolinéarité sévère. Elles ne semblent pas suffisamment élevées pour nécessiter des actions immédiates.
+
+Les autres variables ("local_logement", "materieaux_mure", "reseau_eau", et "type_toilette") montrent des niveaux de multicolinéarité modérés à faibles, suggérant qu'elles ne posent pas de problème significatif de corrélation avec d'autres variables du modèle.
+
+### Matrix de confusion
+```{r}
+predictions <- predict(model_multinomial, base_select)
+confusionMatrix(predictions, base_select$type_logement)
+```
+
+les resultats de la matrix de confusion  indique que le modèle prédit correctement 57.34% des observation soit un peu plus de la moitié des cas.
+La spécificité est relativement élevée pour le logement moderne (87.25%) et le logement non moderne (92.74%), ce qui signifie que le modèle est bon pour identifier ces classes lorsqu'elles sont présentes. 
+Suite aux différents tests de validation, notre modèle est validé. Nous pouvons maintenant passer à l'interprétation des résultats.
+
+### interpretation des coeficients 
+
+Les coefficients obtenus indiquent l’effet des variables explicatives sur la probabilité de choisir un type de logement par rapport à la catégorie de référence, qui est le logement intermédiaire.
+
+Nombre de pièces dans le logement
+Un nombre élevé de pièces dans un logement influence significativement les choix des ménages. Le coefficient de 0.2047964 associé aux logements modernes suggère que, toutes choses égales par ailleurs, la recherche d’un nombre de pièces élevé augmente la probabilité de choisir un logement moderne par rapport à un logement intermédiaire. Autrement dit, les ménages qui ont besoin de plus de pièces dans leur logement sont plus enclins à opter pour un logement moderne plutôt qu’un logement intermédiaire.
+
+Matériaux des murs
+Le type de matériau utilisé pour les murs joue également un rôle crucial dans la probabilité de choisir un type de logement :
+
+Pour les matériaux modernes, le coefficient de 0.1228895 pour les logements modernes montre que, toutes choses égales par ailleurs, la probabilité qu'un ménage qui privilégie les matériaux modernes choisisse un logement moderne est plus élevée par rapport à un logement intermédiaire.
+En revanche, le coefficient de -1.4966059 associé aux logements non modernes indique que, lorsque les ménages recherchent des murs de haute qualité, la probabilité de choisir un logement non moderne par rapport à un logement intermédiaire diminue.
+À l’inverse, pour les matériaux non modernes :
+
+Le coefficient de -0.7091 pour les logements modernes suggère que, lorsqu’un ménage privilégie les matériaux non modernes, la probabilité de choisir un logement moderne par rapport à un logement intermédiaire diminue.
+De plus, le coefficient de 1.467824 associé aux logements non modernes indique que la probabilité qu’un individu qui préfère les matériaux de construction non modernisés choisisse un logement non moderne est très élevée par rapport à un logement intermédiaire.
+Connexion à un réseau d’eau
+La connexion à un réseau d’eau est un facteur significatif dans le choix du type de logement :
+
+Pour les logements modernes, un coefficient de 0.2308943 suggère que l’accès à l’eau courante augmente la probabilité de choisir un logement moderne par rapport à un logement intermédiaire, soulignant ainsi l’importance de cette commodité dans les préférences des ménages pour un logement moderne.
+En revanche, pour les logements non modernes, un coefficient de -0.2619224 montre que la probabilité de choisir un logement non moderne est réduite lorsque l'accès à un réseau d'eau est privilégié.
+Type de toilettes
+L’absence d’équipement des toilettes influence également le choix du type de logement :
+
+Pour les logements modernes, un coefficient de 0.2411701 montre que l’absence d’équipement des toilettes augmente légèrement la probabilité de choisir un logement moderne par rapport à un logement intermédiaire.
+Pour les logements non modernes, un coefficient de 0.6947716 indique que l’absence d’équipement des toilettes augmente significativement la probabilité de choisir un logement non moderne. Autrement dit, un logement sans toilettes équipées est beaucoup plus susceptible d’être non moderne.
+Présence d’un W.C.
+La présence d’un W.C. joue un rôle significatif dans le choix du type de logement :
+
+Pour les logements modernes, un coefficient de 0.9497074 montre que la présence d’un W.C. augmente fortement la probabilité de choisir un logement moderne par rapport à un logement intermédiaire. Cela indique que la présence d’un W.C. est un critère majeur pour les ménages qui optent pour un logement moderne.
+Même pour les logements non modernes, un coefficient de 0.1922105 suggère que la présence d’un W.C. augmente également la probabilité de choisir ce type de logement par rapport à un logement intermédiaire. Cela montre que, quel que soit le type de logement, la présence d’un W.C. reste un facteur positif et apprécié.
+Conclusion sur la Validation du Modèle
+Les variables significatives identifiées montrent que des facteurs tels que le nombre de pièces, le type de matériaux utilisés pour les murs, la connexion à un réseau d'eau, et la présence d'équipements dans les toilettes influencent significativement la probabilité de choisir un logement moderne ou non moderne par rapport à un logement intermédiaire. Ces résultats permettent de mieux comprendre les critères de choix des ménages en matière de logement en fonction de leurs préférences pour des commodités et des caractéristiques spécifiques.
+
