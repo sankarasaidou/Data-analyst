@@ -1,0 +1,296 @@
+*code d'analyse du memoire
+
+** Augmentation du nombre de variable du logiciel
+set maxvar 10000
+
+** Importation des données
+ use"C:\Users\SANKARA\Desktop\memoire__saidou\Memoire_Saidou\BFIR81DT\BFIR81FL.DTA", clear
+ 
+ ***********Variable a utilisée***********
+*caseid : case d'identification
+* v001: Numéro de grappe utilisé pour l'échantillonnage
+* v005  :Poids d'échantillonnage individuel des femmes (6 décimales)
+* v484a  : "Breasts examined for cancer by health care provider"
+* v025 : Milieu de residence
+* v106 : Niveau d'education de la femme
+* v743a :Personne qui décide habituellement des soins de santé de la femme
+* v483a  :  temps d'acces au centre de santé
+* v483b : Moyen de transport utilise
+* v130 : religion
+* v012 : Age
+* v013 : Groupe d'age
+* v501  : Statut matrimonial
+* v717  : Profession de la répondante (regroupée par catégorie)
+* v481  : Couverture par une assurance santé
+* v190  : Niveau de vie du menage (Indice de richesse du ménage (quintiles))
+* v483b : Moyen de transport pour se rendre à l'établissement de santé le plus proche
+* v394  :Avoir visité un établissement de santé au cours des 12 derniers mois
+* v157  : Fréquence de lecture des journaux ou magazines
+* v158  : Fréquence d'écoute de la radio
+* v159  : Fréquence de visionnage de la télévision
+* v171a : Utilisation d'internet
+* v024  :  Région
+* v201  :  Nombre total d'enfants nés vivants( sera untiliser pour creer la variable nulliparite)
+* 467d  :Obtenir des soins médicaux pour soi : la distance à l'établissement de santé(variable :distance_problem  )
+* v701  : Niveau d'éducation du mari/partenaire
+*v731
+***----------Selection des variables d'analyse----------------***
+keep caseid v001 v005 v484a v025 v106 v483a v483b v130 v012 v013 v501 v481 v190 v483b v394 v157 v158 v159 v171a  v024 v201 v731
+* Identification et échantillonnage
+rename caseid identifiant
+rename v001 grappe
+rename v024 region
+rename v012 age
+* v394  :Avoir visité un établissement de santé au cours des 12 derniers mois
+
+rename v394 visit_12m_sante
+
+*v025 : Milieu de residence
+rename v025 milieu_residence 
+*Age groupé
+rename v013 age_group
+* ================================
+* Examen du cancer du sein
+* ================================
+gen examen_cancer_sein = .
+replace examen_cancer_sein = 0 if v484a == 0
+replace examen_cancer_sein = 1 if v484a == 1
+label define label_examen 0 "Non" 1 "Oui"
+label values examen_cancer_sein label_examen
+* Supprimer les réponses "ne sait pas"
+drop if v484a == 8
+
+* ================================
+* Niveau d'éducation de la femme
+* ================================
+gen niveau_educ_femme = .
+replace niveau_educ_femme = 0 if v106 == 0
+replace niveau_educ_femme = 1 if v106 == 1
+replace niveau_educ_femme = 2 if v106 == 2
+replace niveau_educ_femme = 3 if v106 == 3
+label define label_educ 0 "Aucun niveau" 1 "Primaire" 2 "Secondaire" 3 "Supérieur"
+label values niveau_educ_femme label_educ
+
+* ================================
+* Temps d'accès au centre de santé
+* ================================
+gen temps_mis = .
+replace temps_mis = 1 if v483a <= 30
+replace temps_mis = 2 if v483a > 30
+label define label_temps 1 "Moins de 30 min" 2 "Plus de 30 min"
+label values temps_mis label_temps
+
+* ================================
+* Moyen de transport
+* ================================
+gen moyen_transport = .
+replace moyen_transport = 1 if v483b == 24
+replace moyen_transport = 2 if v483b == 22
+replace moyen_transport = 3 if inlist(v483b,13,14,15)
+replace moyen_transport = 4 if inlist(v483b,11,12)
+replace moyen_transport = 5 if !(v483b == 24 | v483b == 22 | inlist(v483b,13,14,15) | inlist(v483b,11,12))
+label define label_transport 1 "À pied" 2 "Vélo" 3 "Moto" 4 "Voiture/Bus" 5 "Autre moyen"
+label values moyen_transport label_transport
+
+* ================================
+* Religion
+* ================================
+gen religion = .
+replace religion = 1 if v130 == 1
+replace religion = 2 if v130 == 2
+replace religion = 3 if v130 == 3
+replace religion = 4 if !(v130 == 1 | v130 == 2 | v130 == 3)
+label define label_religion 1 "Musulmane" 2 "Catholique" 3 "Protestante" 4 "Traditionaliste/Autre"
+label values religion label_religion
+
+* ================================
+* Statut matrimonial
+* ================================
+gen statut_matrimonial = .
+replace statut_matrimonial = 0 if v501 == 0
+replace statut_matrimonial = 1 if inlist(v501,1,2)
+replace statut_matrimonial = 2 if inlist(v501,3,4,5)
+label define label_statut 0 "Célibataire" 1 "Mariée/Union libre" 2 "Divorcée/Séparée/Veuve"
+label values statut_matrimonial label_statut
+
+* ================================
+* Niveau de vie
+* ================================
+gen niveau_vie_menage = v190
+label define label_vie 1 "Plus pauvre" 2 "Pauvre" 3 "Moyen" 4 "Riche" 5 "Plus riche"
+label values niveau_vie_menage label_vie
+
+* ================================
+* Statut maternel
+* ================================
+gen statut_maternel = .
+replace statut_maternel = 0 if v201 == 0
+replace statut_maternel = 1 if v201 > 0
+label define label_maternel 0 "Jamais eu d'enfant" 1 "A déjà eu au moins un enfant"
+label values statut_maternel label_maternel
+
+* ================================
+* Statut professionnel(     "Respondent worked in last 12 months")
+* ================================
+gen travail_12m = .
+replace travail_12m = 0 if v731==0 
+
+replace travail_12m = 1 if missing(travail_12m)
+label define label_dia 0 "Non"  1 "Oui"
+label values travail_12m label_dia
+
+* ================================
+* Visite établissement de santé
+* ================================
+
+* ================================
+* Assurance santé
+* ================================
+gen assurance_sante = .
+replace assurance_sante = 0 if v481 == 0
+replace assurance_sante = 1 if v481 == 1
+label define label_assurance 0 "Non" 1 "Oui"
+label values assurance_sante label_assurance
+
+* ================================
+* Fréquence d'utilisation des médias
+* ================================
+gen media_utilisation_frequence = .
+replace media_utilisation_frequence = 0 if v157==0 & v158==0 & v159==0 & v171a==0
+*Occasionnellement : tous les autres cas
+replace media_utilisation_frequence = 1 if missing(media_utilisation_frequence)
+label define label_media 0 "pas fréquemment"  1 "Fréquemment"
+label values media_utilisation_frequence label_media
+
+***Ponderation :Poids d'échantillonnage individuel des femmes (6 décimales)
+gen Ponderation =v005/1000000
+ 
+*** Selection de la base finale de l'etude
+
+keep identifiant grappe region milieu_residence age_group examen_cancer_sein niveau_educ_femme temps_mis moyen_transport religion statut_matrimonial niveau_vie_menage travail_12m statut_maternel visit_12m_sante assurance_sante media_utilisation_frequence Ponderation
+ 
+***------------Description de la base de données ----------****
+asdoc tab examen_cancer_sein
+ 
+ *Avec ponderaion
+asdoc tab examen_cancer_sein [iw=Ponderation] 
+* ------------------Analyse bivariée (chi²) non pondérée avec asdoc-------------*
+
+*Facteurs sociodémographiques
+
+asdoc tab  age_group examen_cancer_sein, chi2 
+asdoc tab  statut_maternel examen_cancer_sein, chi2
+asdoc tab  statut_matrimonial examen_cancer_sein, chi2
+
+*Facteurs socioéconomiques
+
+asdoc tab  niveau_educ_femme examen_cancer_sein, chi2
+asdoc tab  travail_12m examen_cancer_sein, chi2
+asdoc tab  niveau_vie_menage examen_cancer_sein, chi2
+asdoc tab  assurance_sante examen_cancer_sein, chi2
+
+*Facteurs socioculturels et géographiques
+asdoc tab visit_12m_sante examen_cancer_sein,chi2
+asdoc tab religion examen_cancer_sein, chi2
+asdoc tab moyen_transport examen_cancer_sein, chi2
+asdoc tab temps_mis  examen_cancer_sein, chi2
+asdoc tab milieu_residence  examen_cancer_sein, chi2
+asdoc tab region  examen_cancer_sein, chi2
+asdoc tab media_utilisation_frequence  examen_cancer_sein, chi2
+
+
+* ------------------Analyse bivariée (chi²) pondérée avec asdoc-------------*
+
+*Facteurs sociodémographiques
+
+asdoc tab2  age_group examen_cancer_sein [pw=Ponderation], chi2 
+asdoc tab2  statut_maternel examen_cancer_sein [pw=Ponderation], chi2
+asdoc tab2  statut_matrimonial examen_cancer_sein [pw=Ponderation], chi2
+
+*Facteurs socioéconomiques
+
+asdoc tab2  niveau_educ_femme examen_cancer_sein [pw=Ponderation], chi2
+asdoc tab2  travail_12m examen_cancer_sein [pw=Ponderation], chi2
+asdoc tab2  niveau_vie_menage examen_cancer_sein [pw=Ponderation], chi2
+asdoc tab2  assurance_sante examen_cancer_sein [pw=Ponderation], chi2
+
+*Facteurs socioculturels et géographiques
+asdoc tab2 visit_12m_sante examen_cancer_sein [pw=Ponderation],chi2
+asdoc tab2 religion examen_cancer_sein [pw=Ponderation], chi2
+asdoc tab2 moyen_transport examen_cancer_sein [pw=Ponderation], chi2
+asdoc tab2 temps_mis  examen_cancer_sein [pw=Ponderation], chi2
+asdoc tab2 milieu_residence  examen_cancer_sein [pw=Ponderation], chi2
+asdoc tab2 region  examen_cancer_sein [pw=Ponderation], chi2
+asdoc tab2 media_utilisation_frequence  examen_cancer_sein [pw=Ponderation], chi2
+
+***-------------Régression logistique--------***
+
+****------les cinditions d'utilisation du modele logistique------*****
+
+* Étape 1:
+              * S'assurer que la variable dépendante est binaire (0/1)
+
+              * Supprimer toutes les valeurs manquantes sur les variables d'intérêt
+			  
+			  
+* Etape 2: Vérifier la taille de l'échantillon par modalité
+     *c'esta a dire verifier qu'on a au moins 10 à 20 événements (1 = Oui) par variable explicative *			  
+*--------------validation du modele ------------*****
+
+* Étape 2 : Verification de la non Association entre variables explicatives
+
+*association entre variables: le v de cramer sera utiliser pour ça
+*sur stata on rencintre des dificulte pour le faire,donc il sera realiser sur le logiciel R 
+
+foreach var in region milieu_residence age_group niveau_educ_femme temps_mis moyen_transport religion statut_matrimonial niveau_vie_menage travail_12m statut_maternel visit_12m_sante assurance_sante media_utilisation_frequence {
+    di "=============================="
+    di "Variable : `var'"
+    tab `var' examen_cancer_sein, chi2 V
+}
+*** on suprime la variable frequence de suivi de la television et statut maternel ,  car elles sont fortement correlée
+
+
+asdoc codebook
+**********-----------description de la base de donnée*---------**********
+describe region milieu_residence age_group  examen_cancer_sein niveau_educ_femme ///
+         temps_mis moyen_transport religion statut_matrimonial niveau_vie_menage ///
+         statut_maternel  assurance_sante media_utilisation_frequence visit_12m_sante
+
+
+***----------Donc on peut maintenant faire notre regression logistique sans probleme--------****
+
+
+*Selection des variables significatives de facon automatique
+asdoc stepwise, pr(.05): logit examen_cancer_sein i.region i.milieu_residence i.age_group i.niveau_educ_femme i.temps_mis i.moyen_transport i.religion i.statut_matrimonial i.niveau_vie_menage i.visit_12m_sante  i.travail_12m i.assurance_sante i.media_utilisation_frequence 
+
+asdoc fitstat
+
+* 5. Modèle multivarié Firth
+firthlogit  examen_cancer_sein i.region i.milieu_residence i.age_group i.niveau_educ_femme i.temps_mis i.moyen_transport i.religion i.statut_matrimonial i.niveau_vie_menage i.statut_maternel i.travail_12m i.assurance_sante i.media_utilisation_frequence
+
+***------évaluation de la qualité du modèle logit
+fvset base 3 region /* centre(3) est choisi comme modalité de reference*/
+fvset base 2 milieu_residence /*choisir le milieu rural comme reference*/
+
+ asdoc logistic examen_cancer_sein i.region i.milieu_residence i.age_group i.niveau_educ_femme i.temps_mis i.moyen_transport i.religion i.statut_matrimonial i.visit_12m_sante i.assurance_sante [pw=Ponderation] , or
+
+asdoc fitstat, append
+
+
+/***Modele de Regression logistique final--------***
+logit examen_cancer_sein i.region i.milieu_residence i.age_group i.niveau_educ_femme i.temps_mis i.moyen_transport i.religion i.statut_matrimonial i.niveau_vie_menage i.statut_maternel i.travail_12m i.assurance_sante i.media_utilisation_frequence , or
+asdoc fitstat*/
+
+
+*ROC et AUC
+ asdoc logistic examen_cancer_sein i.region i.milieu_residence i.age_group i.niveau_educ_femme i.temps_mis i.moyen_transport i.religion i.statut_matrimonial i.visit_12m_sante i.assurance_sante [iw=Ponderation] , or
+lroc
+*La courbe ROC donne l'aire sous la courbe (AUC) : plus elle est proche de 1, mieux c'est.
+ 
+ *****pouvoir discriminant
+*drop phat
+predict phat
+roctab examen_cancer_sein phat
+
+
+*---------------------FIN-----------------------*
